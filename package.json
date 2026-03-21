@@ -1,6 +1,6 @@
 {
   "name": "@deadvault/sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Decentralized credential store SDK for AI agents, servers & scripts",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -49,11 +49,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deadvault/deadvault-sdk.git"
+    "url": "git+https://github.com/jo04ni/deadvault-sdk.git"
   },
-  "homepage": "https://vault.dead.box",
+  "homepage": "https://deadvault.xyz/",
   "bugs": {
-    "url": "https://github.com/deadvault/deadvault-sdk/issues"
+    "url": "https://github.com/jo04ni/deadvault-sdk/issues"
   },
   "peerDependencies": {
     "viem": "^2.0.0"

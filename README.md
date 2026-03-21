@@ -1,6 +1,6 @@
 # @deadvault/sdk
 
-Decentralized credential store SDK for AI agents, servers & scripts. Read, write, and manage encrypted secrets stored on-chain via the [DeadVault](https://vault.dead.box) smart contract.
+Decentralized credential store SDK for AI agents, servers & scripts. Read, write, and manage encrypted secrets stored on-chain via the [DeadVault](https://deadvault.xyz/) smart contract.
 
 Part of the [DEADBOX](https://dead.box) ecosystem.
 
