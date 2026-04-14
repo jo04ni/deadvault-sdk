@@ -8,8 +8,9 @@
  * v2: PBKDF2(password + walletSignature, salt, 600k, SHA-256) → AES-256-GCM
  *     Format: 0xDEAD00 || 0x02 || salt(16) || iv(12) || ciphertext
  *
- * v3: PBKDF2(password + walletSignature, salt, N, SHA-256) → AES-256-GCM
+ * v3: PBKDF2(password || 0x00 || walletSignature, salt, N, SHA-256) → AES-256-GCM
  *     Format: 0xDEAD00 || 0x03 || iterations(4 bytes, big-endian) || salt(16) || iv(12) || ciphertext
+ *     Null-byte domain separation prevents length confusion attacks.
  *     Iterations are user-configurable (default 720k).
  */
 
@@ -54,9 +55,9 @@ function fromHex(hex: string): Uint8Array {
   return new Uint8Array(pairs.map((byte) => parseInt(byte, 16)));
 }
 
-async function deriveKey(input: string, salt: Uint8Array, iterations: number): Promise<CryptoKey> {
-  const enc = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(input), "PBKDF2", false, ["deriveKey"]);
+async function deriveKey(input: string | Uint8Array, salt: Uint8Array, iterations: number): Promise<CryptoKey> {
+  const raw = typeof input === "string" ? new TextEncoder().encode(input) : input;
+  const keyMaterial = await crypto.subtle.importKey("raw", raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer, "PBKDF2", false, ["deriveKey"]);
   return crypto.subtle.deriveKey(
     { name: "PBKDF2", salt: salt.buffer.slice(salt.byteOffset, salt.byteOffset + salt.byteLength) as ArrayBuffer, iterations, hash: "SHA-256" },
     keyMaterial,
@@ -64,6 +65,18 @@ async function deriveKey(input: string, salt: Uint8Array, iterations: number): P
     false,
     ["encrypt", "decrypt"],
   );
+}
+
+/** Build domain-separated KDF input: password || 0x00 || walletSignature */
+function buildV3Input(password: string, walletSignature: string): Uint8Array {
+  const enc = new TextEncoder();
+  const pw = enc.encode(password);
+  const sig = enc.encode(walletSignature);
+  const combined = new Uint8Array(pw.length + 1 + sig.length);
+  combined.set(pw, 0);
+  combined[pw.length] = 0x00;
+  combined.set(sig, pw.length + 1);
+  return combined;
 }
 
 /** Encrypt plaintext with password only (v1 format, legacy) */
@@ -105,7 +118,7 @@ export async function encryptV3(
   const enc = new TextEncoder();
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const key = await deriveKey(password + walletSignature, salt, iterations);
+  const key = await deriveKey(buildV3Input(password, walletSignature), salt, iterations);
   const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, enc.encode(plaintext)));
 
   // iterations as 4 bytes big-endian
@@ -150,7 +163,7 @@ export async function decrypt(hexCiphertext: string, password: string, walletSig
     salt = packed.slice(dataOffset, dataOffset + 16);
     iv = packed.slice(dataOffset + 16, dataOffset + 28);
     ciphertext = packed.slice(dataOffset + 28);
-    key = await deriveKey(password + walletSignature, salt, iterations);
+    key = await deriveKey(buildV3Input(password, walletSignature), salt, iterations);
   } else {
     throw new Error(`Unknown encryption version: ${version}`);
   }
