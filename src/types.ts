@@ -2,6 +2,7 @@
  * @deadvault/sdk — Type definitions.
  * @module
  */
+import type { PrivateKeyAccount } from "viem/accounts";
 
 // ── Vault Data Types ────────────────────────────────
 
@@ -53,8 +54,8 @@ export interface DeadVaultConfig {
   chain?: ChainName;
   /** Numeric chain ID — takes precedence over `chain` */
   chainId?: number;
-  /** Custom JSON‑RPC endpoint (overrides built‑in defaults) */
-  rpcUrl?: string;
+  /** Custom JSON‑RPC endpoint(s). Pass an array for automatic fallback. */
+  rpcUrl?: string | string[];
 }
 
 // ── Read / Write Options ────────────────────────────
@@ -75,10 +76,12 @@ export interface WriteOptions {
   data: VaultData;
   /** Master password for encryption */
   password: string;
-  /** Hex‑encoded private key for signing the transaction (`0x…`) */
-  privateKey: string;
-  /** Wallet signature for v2 encryption (created via {@link DeadVault.signKdfMessage}) */
+  /** viem PrivateKeyAccount for signing the transaction (created via `privateKeyToAccount()`) */
+  account: PrivateKeyAccount;
+  /** Wallet signature for v2/v3 encryption (created via {@link DeadVault.signKdfMessage}) */
   walletSignature: string;
+  /** PBKDF2 iteration count for key derivation (default: 720,000). Stored in the v3 header. */
+  iterations?: number;
 }
 
 // ── Result Types ────────────────────────────────────

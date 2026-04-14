@@ -7,7 +7,7 @@ Part of the [DEADBOX](https://dead.box) ecosystem.
 ## Features
 
 - **Read & write** encrypted vaults on-chain (Base, Ethereum, Arbitrum, Optimism)
-- **AES-256-GCM** encryption with PBKDF2 key derivation (600k iterations)
+- **AES-256-GCM** encryption with PBKDF2 key derivation (720k iterations)
 - **TOTP generation** — RFC 6238 codes from vault entries
 - **Zero dependencies** beyond `viem` as a peer dependency
 - **Isomorphic** — works in Node.js 18+, Deno, Bun, Cloudflare Workers
@@ -47,7 +47,7 @@ const vault = new DeadVault(config);
 |-----------|----------|----------|------------------------------------------------------|
 | `chain`   | `string` | `"base"` | Chain name: `base`, `ethereum`, `arbitrum`, `optimism` |
 | `chainId` | `number` | `8453`   | Chain ID (overrides `chain`)                         |
-| `rpcUrl`  | `string` | —        | Custom RPC URL                                       |
+| `rpcUrl`  | `string \| string[]` | —        | Custom RPC URL(s) — pass an array for automatic fallback |
 
 ## Reading Secrets
 
@@ -83,12 +83,17 @@ vault.findEntries(data, { type: "totp" });
 ## Writing Secrets
 
 ```ts
+import { DeadVault, privateKeyToAccount } from "@deadvault/sdk";
+
+const vault = new DeadVault({ chain: "base" });
+const account = privateKeyToAccount("0xYourPrivateKey");
+
 // Sign the KDF message (needed for v2 encryption)
-const sig = await vault.signKdfMessage("0xPrivateKey");
+const sig = await vault.signKdfMessage(account);
 
 // Read existing vault
 const data = await vault.read({
-  address: "0xYourAddress",
+  address: account.address,
   password: "secret",
   walletSignature: sig,
 });
@@ -103,12 +108,13 @@ data.entries.push({
   updatedAt: Date.now(),
 });
 
-// Write back on-chain
+// Write back on-chain (v3 format, default 720k PBKDF2 iterations)
 const result = await vault.write({
   data,
   password: "secret",
-  privateKey: "0xPrivateKey",
+  account,
   walletSignature: sig,
+  // iterations: 1_000_000, // optional: override PBKDF2 iteration count
 });
 
 console.log("TX:", result.hash);
@@ -155,10 +161,11 @@ const exists = await vault.hasVault("0x...");
 
 All vault data is encrypted client-side before being stored on-chain.
 
-- **v1**: `PBKDF2(password, salt, 600k, SHA-256)` → AES-256-GCM
-- **v2**: `PBKDF2(password + walletSignature, salt, 600k, SHA-256)` → AES-256-GCM
+- **v1**: `PBKDF2(password, salt, 600k, SHA-256)` → AES-256-GCM (legacy)
+- **v2**: `PBKDF2(password + walletSignature, salt, 600k, SHA-256)` → AES-256-GCM (legacy)
+- **v3**: `PBKDF2(password + walletSignature, salt, N, SHA-256)` → AES-256-GCM (current, iterations stored in header)
 
-The SDK always writes v2 and can read both formats.
+The SDK writes v3 (default 720k iterations) and can read all formats. You can customize iterations via the `iterations` option in `write()`.
 
 ## Low-Level Exports
 
@@ -177,6 +184,7 @@ import {
   base32Decode,
   VAULT_ADDRESSES,
   CHAIN_NAME_TO_ID,
+  privateKeyToAccount,  // re-exported from viem
 } from "@deadvault/sdk";
 ```
 
@@ -184,7 +192,7 @@ import {
 
 - Encryption keys are derived locally — private keys and passwords never leave the client
 - All on-chain data is encrypted ciphertext — the contract stores opaque blobs
-- PBKDF2 with 600,000 iterations for brute-force resistance
+- PBKDF2 with configurable iterations (default 720k, NIST SP 800-132 compliant)
 - v2 encryption binds the key to the wallet via a signature, preventing password-only attacks
 
 ## Requirements

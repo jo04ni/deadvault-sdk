@@ -14,7 +14,7 @@ export function base32Decode(input: string): Uint8Array {
 
   for (const char of cleaned) {
     const idx = BASE32_CHARS.indexOf(char);
-    if (idx === -1) continue;
+    if (idx === -1) throw new Error(`Invalid Base32 character: '${char}'`);
     value = (value << 5) | idx;
     bits += 5;
     if (bits >= 8) {
@@ -83,7 +83,7 @@ async function generateHOTP(
   return otp.toString().padStart(digits, "0");
 }
 
-/** Validate a base32 TOTP secret — checks it decodes to >= 10 bytes */
+/** Validate a base32 TOTP secret — checks alphabet validity and decoded length >= 10 bytes */
 export function isValidTOTPSecret(secret: string): boolean {
   try {
     const decoded = base32Decode(secret);

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { DeadVault } from "../src/client";
+import { privateKeyToAccount } from "viem/accounts";
 import type { VaultData, VaultEntry } from "../src/types";
 
 // ── Constructor Tests ───────────────────────────────
@@ -153,19 +154,18 @@ describe("DeadVault.findEntries", () => {
 
 describe("DeadVault.signKdfMessage", () => {
   const vault = new DeadVault();
+  // Use a throwaway test key (no real funds)
+  const testAccount = privateKeyToAccount("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80");
 
-  it("signs the KDF message with a private key and returns a 0x-prefixed signature", async () => {
-    // Use a throwaway test key (no real funds)
-    const testKey = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-    const sig = await vault.signKdfMessage(testKey);
+  it("signs the KDF message with an account and returns a 0x-prefixed signature", async () => {
+    const sig = await vault.signKdfMessage(testAccount);
     expect(sig).toMatch(/^0x[0-9a-f]+$/i);
     expect(sig.length).toBeGreaterThan(100); // secp256k1 sigs are 130+ hex chars
   });
 
-  it("same key always produces the same deterministic signature", async () => {
-    const testKey = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-    const sig1 = await vault.signKdfMessage(testKey);
-    const sig2 = await vault.signKdfMessage(testKey);
+  it("same account always produces the same deterministic signature", async () => {
+    const sig1 = await vault.signKdfMessage(testAccount);
+    const sig2 = await vault.signKdfMessage(testAccount);
     expect(sig1).toBe(sig2);
   });
 });

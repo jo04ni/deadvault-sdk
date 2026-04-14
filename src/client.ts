@@ -9,7 +9,8 @@
  */
 
 import type { PublicClient } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { isAddress, getAddress } from "viem";
+import type { PrivateKeyAccount } from "viem/accounts";
 import type {
   DeadVaultConfig,
   ReadOptions,
@@ -28,12 +29,18 @@ import {
   hasVault as checkHasVault,
   writeVaultToChain,
   getVaultAddress,
-  signMessage,
 } from "./contract";
-import { decrypt, encryptV2, detectVersionFromHex, KDF_SIGN_MESSAGE } from "./crypto";
+import { decrypt, encryptV3, DEFAULT_PBKDF2_ITERATIONS, detectVersionFromHex, KDF_SIGN_MESSAGE } from "./crypto";
 import { generateTOTP as totpGenerate, getTOTPTimeRemaining, type TOTPParams } from "./totp";
 
 const VAULT_DATA_VERSION = 1;
+
+function validateAddress(address: string): `0x${string}` {
+  if (!isAddress(address)) {
+    throw new Error(`Invalid Ethereum address: "${address}"`);
+  }
+  return getAddress(address) as `0x${string}`;
+}
 
 function parseVault(plaintext: string): VaultData {
   try {
@@ -69,7 +76,7 @@ function serializeVault(data: VaultData): string {
 
 export class DeadVault {
   private readonly chainId: number;
-  private readonly rpcUrl?: string;
+  private readonly rpcUrl?: string | string[];
   private readonly vaultAddress: `0x${string}`;
   private client: PublicClient;
 
@@ -94,7 +101,8 @@ export class DeadVault {
    * Returns the decrypted VaultData with all entries.
    */
   async read(options: ReadOptions): Promise<VaultData> {
-    const { address, password, walletSignature } = options;
+    const { password, walletSignature } = options;
+    const address = validateAddress(options.address);
 
     const { hasSecret, ciphertext } = await readVaultFromChain(
       this.client,
@@ -108,7 +116,7 @@ export class DeadVault {
 
     const version = detectVersionFromHex(ciphertext);
     if (version >= 2 && !walletSignature) {
-      throw new Error("This vault uses v2 encryption. Provide walletSignature for decryption.");
+      throw new Error(`This vault uses v${version} encryption. Provide walletSignature for decryption.`);
     }
 
     const plaintext = await decrypt(ciphertext, password, walletSignature);
@@ -117,18 +125,14 @@ export class DeadVault {
 
   /**
    * Encrypt and write vault data on-chain.
-   * Requires a private key for the transaction + wallet signature for v2 encryption.
+   * Uses v3 encryption with configurable PBKDF2 iterations (default 720k).
    */
   async write(options: WriteOptions): Promise<WriteResult> {
-    const { data, password, privateKey, walletSignature } = options;
+    const { data, password, account, walletSignature, iterations = DEFAULT_PBKDF2_ITERATIONS } = options;
 
     const plaintext = serializeVault(data);
-    const ciphertext = await encryptV2(plaintext, password, walletSignature);
+    const ciphertext = await encryptV3(plaintext, password, walletSignature, iterations);
     const payload = ciphertext as `0x${string}`;
-
-    // Derive the wallet address from private key for the pass check
-    const hex = (privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`) as `0x${string}`;
-    const account = privateKeyToAccount(hex);
 
     const hasPass = await checkUnlimitedPass(
       this.client,
@@ -144,7 +148,7 @@ export class DeadVault {
     return writeVaultToChain(
       this.chainId,
       this.vaultAddress,
-      privateKey,
+      account,
       payload,
       fee,
       this.rpcUrl,
@@ -222,22 +226,24 @@ export class DeadVault {
    * Check if an address has an unlimited pass (no fee required).
    */
   async hasPass(address: string): Promise<boolean> {
-    return checkUnlimitedPass(this.client, this.vaultAddress, address);
+    const validated = validateAddress(address);
+    return checkUnlimitedPass(this.client, this.vaultAddress, validated);
   }
 
   /**
    * Check if an address has a vault on-chain.
    */
   async hasVault(address: string): Promise<boolean> {
-    return checkHasVault(this.client, this.vaultAddress, address);
+    const validated = validateAddress(address);
+    return checkHasVault(this.client, this.vaultAddress, validated);
   }
 
   /**
-   * Sign the KDF message with a private key.
+   * Sign the KDF message with a PrivateKeyAccount.
    * Returns the wallet signature needed for v2 read/write operations.
    */
-  async signKdfMessage(privateKey: string): Promise<string> {
-    return signMessage(privateKey, KDF_SIGN_MESSAGE);
+  async signKdfMessage(account: PrivateKeyAccount): Promise<string> {
+    return account.signMessage({ message: KDF_SIGN_MESSAGE });
   }
 
   /** Get the chain ID this client is configured for */

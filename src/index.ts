@@ -26,6 +26,10 @@ export type {
   FeeInfo,
 } from "./types";
 
+// Re-export viem's PrivateKeyAccount + privateKeyToAccount for convenience
+export type { PrivateKeyAccount } from "viem/accounts";
+export { privateKeyToAccount } from "viem/accounts";
+
 // TOTP utilities
 export {
   generateTOTP,
@@ -43,7 +47,9 @@ export { VAULT_ADDRESSES, CHAIN_NAME_TO_ID } from "./chains";
 export {
   encrypt,
   encryptV2,
+  encryptV3,
   decrypt,
   detectVersionFromHex,
   KDF_SIGN_MESSAGE,
+  DEFAULT_PBKDF2_ITERATIONS,
 } from "./crypto";

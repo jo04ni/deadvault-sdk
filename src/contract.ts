@@ -5,19 +5,27 @@
 import {
   createPublicClient,
   createWalletClient,
+  fallback,
   http,
   encodeFunctionData,
   type PublicClient,
 } from "viem";
+import type { PrivateKeyAccount } from "viem/accounts";
 import { privateKeyToAccount } from "viem/accounts";
 import { VAULT_ADDRESSES, RPC_URLS, CHAINS, DEAD_VAULT_ABI } from "./chains";
 
-/** Create a public client for the given chain + optional custom RPC */
-export function makePublicClient(chainId: number, rpcUrl?: string): PublicClient {
+function buildTransport(chainId: number, rpcUrl?: string | string[]) {
+  if (Array.isArray(rpcUrl)) {
+    return fallback(rpcUrl.map((url) => http(url)));
+  }
+  return http(rpcUrl || RPC_URLS[chainId]);
+}
+
+/** Create a public client for the given chain + optional custom RPC(s) */
+export function makePublicClient(chainId: number, rpcUrl?: string | string[]): PublicClient {
   const chain = CHAINS[chainId];
   if (!chain) throw new Error(`Unsupported chain ID: ${chainId}`);
-  const transport = http(rpcUrl || RPC_URLS[chainId]);
-  return createPublicClient({ chain, transport });
+  return createPublicClient({ chain, transport: buildTransport(chainId, rpcUrl) });
 }
 
 /** Read the on-chain encrypted vault blob for an address */
@@ -101,21 +109,18 @@ export async function hasVault(
 export async function writeVaultToChain(
   chainId: number,
   vaultAddress: `0x${string}`,
-  privateKey: string,
+  account: PrivateKeyAccount,
   payload: `0x${string}`,
   value: bigint,
-  rpcUrl?: string,
+  rpcUrl?: string | string[],
 ): Promise<{ hash: string; blockNumber: bigint }> {
   const chain = CHAINS[chainId];
   if (!chain) throw new Error(`Unsupported chain ID: ${chainId}`);
 
-  const hex = privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`;
-  const account = privateKeyToAccount(hex as `0x${string}`);
-
   const walletClient = createWalletClient({
     account,
     chain,
-    transport: http(rpcUrl || RPC_URLS[chainId]),
+    transport: buildTransport(chainId, rpcUrl),
   });
 
   const calldata = encodeFunctionData({
